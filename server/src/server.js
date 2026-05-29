@@ -28,13 +28,46 @@ const {
 
 dotenv.config();
 
+const normalizeOrigin = (origin) => {
+  const trimmed = origin?.trim();
+
+  if (!trimmed) {
+    return "";
+  }
+
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+
+  if (/^(localhost|127\.0\.0\.1)(:\d+)?$/i.test(trimmed)) {
+    return `http://${trimmed}`;
+  }
+
+  return `https://${trimmed}`;
+};
+
+const allowedOrigins = Array.from(new Set([
+  ...((process.env.CLIENT_URL || "http://localhost:5173")
+    .split(",")
+    .map((origin) => normalizeOrigin(origin))
+    .filter(Boolean)),
+  normalizeOrigin("http://localhost:5173"),
+  normalizeOrigin("http://127.0.0.1:5173"),
+]));
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    return callback(new Error("Not allowed by CORS"));
+  },
+  credentials: true,
+};
+
 const app = express();
-app.use(
-  cors({
-    origin: process.env.CLIENT_URL || "http://localhost:5173",
-    credentials: true,
-  })
-);
+app.use(cors(corsOptions));
 app.use(express.json());
 
 app.get("/health", (req, res) => {
@@ -61,9 +94,8 @@ const startServer = async () => {
 
     const io = new Server(httpServer, {
       cors: {
-        origin: process.env.CLIENT_URL || "http://localhost:5173",
+        ...corsOptions,
         methods: ["GET", "POST"],
-        credentials: true,
       },
     });
 
